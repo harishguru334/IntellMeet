@@ -12,19 +12,23 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        let user = await User.findOne({ email: profile.emails[0].value });
+        const email = profile.emails[0].value;
 
-        if (user) {
-          return done(null, user);
-        }
-
-        user = await User.create({
-          name: profile.displayName,
-          email: profile.emails[0].value,
-          googleId: profile.id,
-          avatar: profile.photos[0]?.value,
-          password: undefined,
-        });
+        // findOneAndUpdate with upsert avoids a race condition where two
+        // near-simultaneous logins both pass the findOne check and then
+        // both try to create the same user, causing a duplicate key error.
+        const user = await User.findOneAndUpdate(
+          { email },
+          {
+            $setOnInsert: {
+              name: profile.displayName,
+              email,
+              googleId: profile.id,
+              avatar: profile.photos[0]?.value,
+            },
+          },
+          { new: true, upsert: true }
+        );
 
         done(null, user);
       } catch (error) {
